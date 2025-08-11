@@ -1,0 +1,7 @@
+grid:
+  seeds: [0, 1, 2]
+  methods: ["source_only", "dann"]
+  shifts: ["tls_early2late"]
+  learning_rates: [3.0e-4, 1.0e-4]
+
+

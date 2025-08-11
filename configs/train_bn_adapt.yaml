@@ -1,0 +1,7 @@
+method: bn_adapt
+train:
+  epochs: 1
+  batch_size: 64
+  amp: true
+
+

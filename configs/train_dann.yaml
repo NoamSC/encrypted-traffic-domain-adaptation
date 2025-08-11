@@ -1,0 +1,23 @@
+method: dann
+train:
+  epochs: 20
+  batch_size: 64
+  lr: 3.0e-4
+  weight_decay: 0.01
+  optimizer: adamw
+  amp: true
+  scheduler:
+    name: cosine
+    warmup_steps: 1000
+    max_steps: 20000
+dann:
+  discriminator:
+    hidden_dims: [256, 128]
+    dropout: 0.1
+  grl:
+    schedule: sigmoid  # constant | linear | sigmoid
+    lambda: 1.0
+    max_lambda: 1.0
+    steps: 20000
+
+

@@ -1,0 +1,19 @@
+data:
+  shift: tls_early2late
+  source:
+    type: hf  # hf | local | toy
+    hf_id: rigcor7/Debunk_Traffic_Representation
+    hf_revision: main
+    cache_dir: ~/.cache/huggingface/datasets
+  preprocessing:
+    drop_vpn: true
+    protocol_whitelist: ["TLS", "QUIC", "HTTP2"]
+    dedup: true
+    min_packets: 5
+    max_len: 256
+  batch_sizes:
+    train: 64
+    eval: 128
+  num_classes: 5
+
+
