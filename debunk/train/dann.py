@@ -63,12 +63,12 @@ class DannTrainer(BaseTrainer):
                 if src_len is not None:
                     src_len = src_len.to(self.device)
                 src_labels = src_batch["labels"].to(self.device)
-                with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+                with torch.amp.autocast('cuda', enabled=self.scaler.is_enabled()):
                     src_logits, src_feat = self.model.classifier(input_ids=src_input, lengths=src_len)
                     sup_loss = classification_loss(src_logits, src_labels)
 
                 # domain adversarial: source
-                with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+                with torch.amp.autocast('cuda', enabled=self.scaler.is_enabled()):
                     lam = grl_lambda(self.state.global_step, schedule, base_lambda, max_lambda, total_steps)
                     self.grl.set_lambda(lam)
                     src_dom_logits = self.dom_disc(self.grl(src_feat))
@@ -80,7 +80,7 @@ class DannTrainer(BaseTrainer):
                 tgt_len = tgt_batch.get("lengths")
                 if tgt_len is not None:
                     tgt_len = tgt_len.to(self.device)
-                with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+                with torch.amp.autocast('cuda', enabled=self.scaler.is_enabled()):
                     _, tgt_feat = self.model.classifier(input_ids=tgt_input, lengths=tgt_len)
                     tgt_dom_logits = self.dom_disc(self.grl(tgt_feat))
                     tgt_dom_labels = torch.ones(tgt_dom_logits.size(0), dtype=torch.long, device=self.device)

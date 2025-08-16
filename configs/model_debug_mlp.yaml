@@ -1,0 +1,12 @@
+model:
+  name: debug_mlp
+  hidden_dims: [256, 128]
+  dropout: 0.1
+head:
+  num_classes: infer
+train:
+  epochs: 1   # keep tiny by default; you won't run now
+  amp: false
+system:
+  num_workers: 4
+  pin_memory: true

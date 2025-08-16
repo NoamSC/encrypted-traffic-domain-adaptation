@@ -6,4 +6,5 @@ tensorboard>=2.12
 datasets>=2.14
 scikit-learn>=1.1
 matplotlib>=3.6
+liac-arff>=2.5
 

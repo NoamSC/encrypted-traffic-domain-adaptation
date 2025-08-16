@@ -1,0 +1,12 @@
+data:
+  shift: iscx_a2_nonvpn2vpn
+  source:
+    type: iscx_a2_arff
+    root: /home/anatbr/dataset/ISCX-VPN-NonVPN-2016/
+    window: 60s  # one of {15s,30s,60s,120s}
+  preprocessing:
+    max_len: 0  # unused for tabular
+  batch_sizes:
+    train: 128
+    eval: 256
+  # num_classes resolved from data

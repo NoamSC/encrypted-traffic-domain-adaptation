@@ -4,7 +4,7 @@ data:
     type: hf  # hf | local | toy
     hf_id: rigcor7/Debunk_Traffic_Representation
     hf_revision: main
-    cache_dir: ~/.cache/huggingface/datasets
+    cache_dir: /home/anatbr/students/noamshakedc/env/.cache/huggingface
   preprocessing:
     drop_vpn: true
     protocol_whitelist: ["TLS", "QUIC", "HTTP2"]

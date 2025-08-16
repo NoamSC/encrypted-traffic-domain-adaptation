@@ -1,0 +1,7 @@
+# Compose this with model and method configs
+method: source_only
+seed: 0
+log:
+  log_interval: 50
+system:
+  deterministic: true

@@ -39,7 +39,7 @@ class SourceOnlyTrainer(BaseTrainer):
                 if lengths is not None:
                     lengths = lengths.to(self.device)
                 labels = batch["labels"].to(self.device)
-                with torch.cuda.amp.autocast(enabled=self.scaler.is_enabled()):
+                with torch.amp.autocast('cuda', enabled=self.scaler.is_enabled()):
                     logits, _ = self.model(input_ids=input_ids, lengths=lengths)
                     loss = classification_loss(logits, labels)
                 self.backward_and_step(loss, optimizer)

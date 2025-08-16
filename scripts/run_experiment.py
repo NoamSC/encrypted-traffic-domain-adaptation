@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import os
 import argparse
 import sys
+
+# Ensure Hugging Face caches use /home storage before any downstream imports
+os.environ.setdefault("HF_HOME", "/home/anatbr/students/noamshakedc/env/.cache/huggingface")
+os.environ.setdefault("HF_DATASETS_CACHE", "/home/anatbr/students/noamshakedc/env/.cache/huggingface/datasets")
+os.environ.setdefault("TRANSFORMERS_CACHE", "/home/anatbr/students/noamshakedc/env/.cache/huggingface/transformers")
 
 from debunk.runner import run_experiment
 

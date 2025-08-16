@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import os
+import torch
 import pandas as pd
+import numpy as np
+try:
+    import arff as liac_arff  # liac-arff
+except Exception:  # pragma: no cover - optional until requirements installed
+    liac_arff = None  # type: ignore
 from datasets import load_dataset
 
 from ..registry import DATASETS, COLLATORS
@@ -108,4 +114,132 @@ def build_hf_dataset(cfg: Dict[str, Any], split: str) -> TrafficDataset:
     max_len = int(cfg.get("data", {}).get("preprocessing", {}).get("max_len", 256))
     return TrafficDataset(samples, max_len=max_len)
 
+
+class TabularDataset:
+    """Simple tabular dataset for float features.
+
+    Returns dict with input_ids (float32 vector), label (long), domain (long), length (long=feature_dim).
+    """
+
+    def __init__(self, features: np.ndarray, labels: np.ndarray, domain: int) -> None:
+        assert features.ndim == 2, "features must be 2D (N, D)"
+        assert features.shape[0] == labels.shape[0]
+        self.features = features.astype(np.float32, copy=False)
+        self.labels = labels.astype(np.int64, copy=False)
+        self.domain = int(domain)
+        self._num_classes = int(max(1, int(labels.max()) + 1)) if labels.size > 0 else 1
+
+    def __len__(self) -> int:
+        return self.features.shape[0]
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        x = self.features[idx]
+        y = int(self.labels[idx])
+        return {
+            "input_ids": torch.from_numpy(x),
+            "label": torch.tensor(y, dtype=torch.long),
+            "domain": torch.tensor(self.domain, dtype=torch.long),
+            "length": torch.tensor(self.features.shape[1], dtype=torch.long),
+        }
+
+    def num_classes(self) -> int:
+        return self._num_classes
+
+    def num_features(self) -> int:
+        return int(self.features.shape[1])
+
+
+def _read_arff_dataframe(path: str) -> pd.DataFrame:
+    if liac_arff is None:
+        raise ImportError("liac-arff is required to read ARFF files. Please install 'liac-arff'.")
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        data = liac_arff.load(f)
+    columns = [a[0] for a in data.get("attributes", [])]
+    df = pd.DataFrame(data.get("data", []), columns=columns)
+    # Replace missing markers
+    df.replace({"?": np.nan}, inplace=True)
+    return df
+
+
+def _pick_label_column(df: pd.DataFrame) -> str:
+    candidates = ["class", "Class", "label", "Label", "Application", "app", "Type", "type"]
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return df.columns[-1]
+
+
+def _factorize_non_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for col in out.columns:
+        # Try numeric conversion first
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+        if out[col].dtype.kind not in {"i", "u", "f"}:
+            # Fallback to string factorization
+            codes, _ = pd.factorize(out[col].astype(str), sort=True)
+            out[col] = codes
+    out = out.fillna(0)
+    return out
+
+
+def _build_iscx_a2_paths(cfg: Dict[str, Any]) -> Tuple[str, str]:
+    src_cfg = cfg.get("data", {}).get("source", {})
+    root = src_cfg.get("root")
+    window = str(src_cfg.get("window", "60s"))
+    if root is None:
+        raise ValueError("data.source.root must be set for iscx_a2_arff")
+    base = os.path.join(root, "CSVs", "Scenario A2-ARFF")
+    nonvpn = os.path.join(base, f"TimeBasedFeatures-Dataset-{window}-NO-VPN.arff")
+    vpn = os.path.join(base, f"TimeBasedFeatures-Dataset-{window}-VPN.arff")
+    return nonvpn, vpn
+
+
+@DATASETS.register("iscx_a2_arff")
+def build_iscx_a2_arff(cfg: Dict[str, Any], split: str) -> TabularDataset:
+    nonvpn_path, vpn_path = _build_iscx_a2_paths(cfg)
+    if not os.path.exists(nonvpn_path):
+        raise FileNotFoundError(f"Non-VPN ARFF not found: {nonvpn_path}")
+    if not os.path.exists(vpn_path):
+        raise FileNotFoundError(f"VPN ARFF not found: {vpn_path}")
+
+    df_src = _read_arff_dataframe(nonvpn_path)
+    df_tgt = _read_arff_dataframe(vpn_path)
+    # Label resolution across both domains
+    label_col = _pick_label_column(df_src)
+    if label_col not in df_tgt.columns:
+        label_col = _pick_label_column(df_tgt)
+    src_labels = df_src[label_col].astype(str)
+    tgt_labels = df_tgt[label_col].astype(str)
+    uniq = sorted(set(src_labels.unique()).union(set(tgt_labels.unique())))
+    label_to_id = {lab: i for i, lab in enumerate(uniq)}
+
+    def to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        y = df[label_col].astype(str).map(label_to_id).astype(np.int64)
+        X = _factorize_non_numeric(df.drop(columns=[label_col])).to_numpy(dtype=np.float32)
+        return X, y.to_numpy(dtype=np.int64)
+
+    X_src, y_src = to_xy(df_src)
+    X_tgt, y_tgt = to_xy(df_tgt)
+
+    # Deterministic split for source into train/val/test
+    rng = np.random.RandomState(int(cfg.get("seed", 0)))
+    n = X_src.shape[0]
+    idx = np.arange(n)
+    rng.shuffle(idx)
+    n_train = int(0.8 * n)
+    n_val = int(0.1 * n)
+    train_idx = idx[:n_train]
+    val_idx = idx[n_train : n_train + n_val]
+    test_idx = idx[n_train + n_val :]
+
+    if split == "train_source":
+        return TabularDataset(X_src[train_idx], y_src[train_idx], domain=0)
+    if split == "val_source":
+        return TabularDataset(X_src[val_idx], y_src[val_idx], domain=0)
+    if split == "test_source":
+        return TabularDataset(X_src[test_idx], y_src[test_idx], domain=0)
+    if split in {"unlabeled_target", "test_target"}:
+        return TabularDataset(X_tgt, y_tgt, domain=1)
+
+    raise KeyError(f"Unknown split: {split}")
 

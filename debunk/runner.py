@@ -14,6 +14,7 @@ from .utils.io import save_json
 from .data.splits import SplitManager
 from .models.backbone import NetMambaBackbone
 from .models.classifier import TrafficClassifier
+from .models.debug_mlp import DebugMLPClassifier
 from .models.dann import DomainDiscriminator, GradientReversal, DannModel
 from .train.source_only import SourceOnlyTrainer
 from .train.bn_adapt import BNAdaptTrainer
@@ -22,21 +23,17 @@ from .utils.io import save_json
 import subprocess
 
 
-def build_model(cfg: Dict[str, Any]) -> TrafficClassifier:
+def build_model(cfg: Dict[str, Any]):
     mcfg = cfg.get("model", {})
-    backbone = NetMambaBackbone(
-        d_model=int(mcfg.get("d_model", 256)),
-        n_layers=int(mcfg.get("n_layers", 6)),
-        dropout=float(mcfg.get("dropout", 0.1)),
-        max_len=int(mcfg.get("max_len", 256)),
-    )
-    # if num_classes not provided or marked auto/invalid, infer from source train split
+    model_name = str(mcfg.get("name", "netmamba")).lower()
+
+    # Resolve number of classes first
     head_cfg = cfg.setdefault("head", {})
     requested_nc = head_cfg.get("num_classes")
     infer_needed = (
         (requested_nc is None)
         or (isinstance(requested_nc, (int, float)) and int(requested_nc) <= 0)
-        or (isinstance(requested_nc, str) and requested_nc.lower() in {"auto", "infer"})
+        or (isinstance(requested_nc, str) and str(requested_nc).lower() in {"auto", "infer"})
         or ("num_classes" not in head_cfg)
     )
     if infer_needed:
@@ -44,10 +41,35 @@ def build_model(cfg: Dict[str, Any]) -> TrafficClassifier:
             tmp_splits = SplitManager(cfg).build_loaders()
             num_classes = tmp_splits["src_train"].dataset.num_classes()
         except Exception:
-            num_classes = int(cfg.get("data", {}).get("num_classes", 5))
+            num_classes = int(cfg.get("data", {}).get("num_classes", 2))
         head_cfg["num_classes"] = int(num_classes)
     else:
         num_classes = int(requested_nc)
+
+    if model_name == "debug_mlp":
+        # Infer input feature dimension from a small sample
+        input_dim: int
+        try:
+            tmp_splits = SplitManager(cfg).build_loaders()
+            ds = tmp_splits["src_train"].dataset
+            if hasattr(ds, "num_features"):
+                input_dim = int(ds.num_features())
+            else:
+                sample = next(iter(tmp_splits["src_train"]))
+                input_dim = int(sample["input_ids"].shape[-1])
+        except Exception:
+            input_dim = int(mcfg.get("input_dim", 128))
+        hidden_dims = list(mcfg.get("hidden_dims", [128, 64]))
+        dropout = float(mcfg.get("dropout", 0.1))
+        return DebugMLPClassifier(input_dim=input_dim, num_classes=num_classes, hidden_dims=hidden_dims, dropout=dropout)
+
+    # Default path: NetMamba backbone classifier
+    backbone = NetMambaBackbone(
+        d_model=int(mcfg.get("d_model", 256)),
+        n_layers=int(mcfg.get("n_layers", 6)),
+        dropout=float(mcfg.get("dropout", 0.1)),
+        max_len=int(mcfg.get("max_len", 256)),
+    )
     head_dropout = float(cfg.get("head", {}).get("dropout", 0.1))
     return TrafficClassifier(backbone=backbone, num_classes=num_classes, head_dropout=head_dropout)
 
