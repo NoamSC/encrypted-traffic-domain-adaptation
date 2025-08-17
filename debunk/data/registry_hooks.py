@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 import os
+import io
 import torch
 import pandas as pd
 import numpy as np
@@ -150,15 +151,43 @@ class TabularDataset:
 
 
 def _read_arff_dataframe(path: str) -> pd.DataFrame:
-    if liac_arff is None:
-        raise ImportError("liac-arff is required to read ARFF files. Please install 'liac-arff'.")
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        data = liac_arff.load(f)
-    columns = [a[0] for a in data.get("attributes", [])]
-    df = pd.DataFrame(data.get("data", []), columns=columns)
-    # Replace missing markers
-    df.replace({"?": np.nan}, inplace=True)
-    return df
+    """Robust ARFF reader with fallbacks.
+
+    - Skips any preamble before the @RELATION line
+    - Falls back to CSV parsing if ARFF parsing fails
+    """
+    # Try ARFF first (if available)
+    if liac_arff is not None:
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+            # Strip BOM and find first @RELATION
+            text = text.lstrip("\ufeff")
+            lines = text.splitlines()
+            start = 0
+            for i, line in enumerate(lines):
+                if line.strip().lower().startswith("@relation"):
+                    start = i
+                    break
+            arff_text = "\n".join(lines[start:]) if start > 0 else text
+            data = liac_arff.load(io.StringIO(arff_text))
+            columns = [a[0] for a in data.get("attributes", [])]
+            df = pd.DataFrame(data.get("data", []), columns=columns)
+            df.replace({"?": np.nan}, inplace=True)
+            return df
+        except Exception:
+            pass
+    # Fallback: try CSV
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        # Last resort: try semicolon or tab delimiters
+        for sep in [";", "\t", " "]:
+            try:
+                return pd.read_csv(path, sep=sep)
+            except Exception:
+                continue
+    raise RuntimeError(f"Failed to read ARFF/CSV file: {path}")
 
 
 def _pick_label_column(df: pd.DataFrame) -> str:
