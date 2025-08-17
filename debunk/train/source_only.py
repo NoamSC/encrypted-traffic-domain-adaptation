@@ -43,6 +43,7 @@ class SourceOnlyTrainer(BaseTrainer):
                     logits, _ = self.model(input_ids=input_ids, lengths=lengths)
                     loss = classification_loss(logits, labels)
                 self.backward_and_step(loss, optimizer)
+                self.step_scheduler(scheduler)
                 if self.state.global_step % int(self.cfg.get("log", {}).get("log_interval", 50)) == 0:
                     self.writer.add_scalar("loss/src_train", float(loss.item()), self.state.global_step)
 

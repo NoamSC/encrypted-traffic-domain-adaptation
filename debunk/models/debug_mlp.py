@@ -30,6 +30,8 @@ class DebugMLPClassifier(nn.Module):
     def forward(self, input_ids: torch.Tensor, lengths: torch.Tensor | None = None):
         # input_ids shape: (B, D)
         x = input_ids.float()
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
         feats = self.mlp(x)
         logits = self.head(feats)
         return logits, feats

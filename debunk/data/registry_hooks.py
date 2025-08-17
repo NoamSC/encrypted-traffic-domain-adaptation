@@ -261,6 +261,14 @@ def build_iscx_a2_arff(cfg: Dict[str, Any], split: str) -> TabularDataset:
     val_idx = idx[n_train : n_train + n_val]
     test_idx = idx[n_train + n_val :]
 
+    # Feature standardization fitted on source train
+    if n > 0:
+        mu = X_src[train_idx].mean(axis=0)
+        sigma = X_src[train_idx].std(axis=0)
+        sigma[sigma == 0] = 1.0
+        X_src = (X_src - mu) / sigma
+        X_tgt = (X_tgt - mu) / sigma
+
     if split == "train_source":
         return TabularDataset(X_src[train_idx], y_src[train_idx], domain=0)
     if split == "val_source":
