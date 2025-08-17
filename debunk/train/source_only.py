@@ -44,7 +44,7 @@ class SourceOnlyTrainer(BaseTrainer):
                     loss = classification_loss(logits, labels)
                 self.backward_and_step(loss, optimizer)
                 if self.state.global_step % int(self.cfg.get("log", {}).get("log_interval", 50)) == 0:
-                    self.writer.add_scalar("loss/train", float(loss.item()), self.state.global_step)
+                    self.writer.add_scalar("loss/src_train", float(loss.item()), self.state.global_step)
 
             # evaluate
             src_metrics = self.evaluate_classifier(self.model, val_src, split="src_val")
@@ -58,14 +58,18 @@ class SourceOnlyTrainer(BaseTrainer):
                 "step": self.state.global_step,
                 "epoch": epoch,
                 "src_val_acc": src_metrics["acc"],
+                "src_val_loss": src_metrics.get("loss", None),
                 "tgt_test_acc": tgt_metrics["acc"],
+                "tgt_test_loss": tgt_metrics.get("loss", None),
             })
 
         final_src = self.evaluate_classifier(self.model, test_src, split="src_test_final")
         final_tgt = self.evaluate_classifier(self.model, test_tgt, split="tgt_test_final")
         self.save_metrics({
             "src_test_acc": final_src["acc"],
+            "src_test_loss": final_src.get("loss", None),
             "tgt_test_acc": final_tgt["acc"],
+            "tgt_test_loss": final_tgt.get("loss", None),
             "best_tgt_acc": self.state.best_target_acc,
         }, final=True)
 

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from ..utils.metrics import accuracy_from_logits, confusion_matrix_image
+from ..losses.classification import classification_loss
 from ..utils.checkpoint import save_checkpoint
 from ..utils.tb import write_hparams
 from ..utils.env import capture_environment
@@ -68,6 +69,7 @@ class BaseTrainer:
     def evaluate_classifier(self, model: torch.nn.Module, loader: DataLoader, split: str) -> Dict[str, float]:
         model.eval()
         total, correct = 0, 0
+        loss_sum = 0.0
         all_targets = []
         all_preds = []
         with torch.no_grad():
@@ -78,12 +80,17 @@ class BaseTrainer:
                     lengths = lengths.to(self.device)
                 labels = batch["labels"].to(self.device)
                 logits, _ = self._forward_classifier(model, input_ids=input_ids, lengths=lengths)
+                # accumulate loss and accuracy
+                batch_loss = classification_loss(logits, labels)
+                loss_sum += float(batch_loss.item()) * float(labels.numel())
                 correct += (logits.argmax(dim=1) == labels).sum().item()
                 total += labels.numel()
                 all_targets.append(labels.cpu())
                 all_preds.append(logits.argmax(dim=1).cpu())
         acc = correct / max(1, total)
+        avg_loss = loss_sum / max(1, total)
         self.writer.add_scalar(f"acc/{split}", acc, self.state.global_step)
+        self.writer.add_scalar(f"loss/{split}", avg_loss, self.state.global_step)
         # confusion matrix image (force consistent labels)
         import torch as _t
 
@@ -91,7 +98,7 @@ class BaseTrainer:
             num_classes = int(self.cfg.get("head", {}).get("num_classes", self.cfg.get("data", {}).get("num_classes", 5)))
             img = confusion_matrix_image(_t.cat(all_targets), _t.cat(all_preds), num_classes=num_classes)
             self.writer.add_image(f"cm/{split}", img, self.state.global_step, dataformats="HWC")
-        return {"acc": acc}
+        return {"acc": acc, "loss": avg_loss}
 
     def save_metrics(self, metrics: Dict[str, Any], final: bool = False) -> None:
         metrics_path = os.path.join(self.run_dir, "metrics.jsonl")

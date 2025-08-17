@@ -107,7 +107,9 @@ class DannTrainer(BaseTrainer):
                 "step": self.state.global_step,
                 "epoch": epoch,
                 "src_val_acc": src_metrics["acc"],
+                "src_val_loss": src_metrics.get("loss", None),
                 "tgt_test_acc": tgt_metrics["acc"],
+                "tgt_test_loss": tgt_metrics.get("loss", None),
                 "lambda": float(self.grl.lambd),
             })
 
@@ -116,7 +118,9 @@ class DannTrainer(BaseTrainer):
         final_tgt = self.evaluate_classifier(self.model, test_tgt, split="tgt_test_final")
         self.save_metrics({
             "src_val_acc": final_src["acc"],
+            "src_val_loss": final_src.get("loss", None),
             "tgt_test_acc": final_tgt["acc"],
+            "tgt_test_loss": final_tgt.get("loss", None),
             "best_tgt_acc": self.state.best_target_acc,
         }, final=True)
 
