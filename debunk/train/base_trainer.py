@@ -27,8 +27,14 @@ class BaseTrainer:
         self.cfg = cfg
         self.run_dir = run_dir
         self.device = device
-        amp_enabled = bool(cfg.get("train", {}).get("amp", False)) and torch.cuda.is_available()
-        self.scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
+        use_cuda = (str(cfg.get("system", {}).get("device", "auto")).lower() in {"auto", "cuda", "gpu"}) and torch.cuda.is_available()
+        amp_enabled = bool(cfg.get("train", {}).get("amp", False)) and use_cuda
+        # Use new torch.amp.GradScaler API; select CUDA explicitly
+        try:
+            self.scaler = torch.amp.GradScaler('cuda', enabled=amp_enabled)
+        except Exception:
+            # Fallback for older torch
+            self.scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
         self.state = TrainState()
         self.writer = SummaryWriter(log_dir=os.path.join(run_dir, "tb"))
 

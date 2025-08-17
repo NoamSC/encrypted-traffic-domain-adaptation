@@ -78,7 +78,14 @@ def run_experiment(args: argparse.Namespace) -> None:
     exp = ExperimentConfig.from_args(args)
     cfg = exp.load_and_resolve()
     set_seed(int(cfg.get("seed", args.seed)), deterministic=bool(cfg.get("system", {}).get("deterministic", False)))
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Select device with optional override
+    dev_pref = str(cfg.get("system", {}).get("device", "auto")).lower()
+    if dev_pref == "cpu":
+        device = torch.device("cpu")
+    elif dev_pref in {"cuda", "gpu"}:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     run_dir = ensure_run_dir(exp.method, exp.shift, exp.seed)
     exp.save_meta(run_dir, args)
 
